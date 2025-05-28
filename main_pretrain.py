@@ -157,8 +157,9 @@ def main(args):
 
     # only fine-tune decoder
     model.freeze_encoder()
-    
+
     model.to(device)
+    model.perceptual_loss_fn.to(device)
 
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))

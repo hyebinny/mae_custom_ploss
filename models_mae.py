@@ -18,6 +18,27 @@ from timm.models.vision_transformer import PatchEmbed, Block
 
 from util.pos_embed import get_2d_sincos_pos_embed
 
+import torchvision.models as models
+from torchvision import transforms
+from torch.nn import functional as F
+
+class VGGLoss(nn.Module):
+    def __init__(self, layer=8, reduction='mean'):
+        super().__init__()
+        vgg = models.vgg19(pretrained=True).features[:layer+1]
+        for param in vgg.parameters():
+            param.requires_grad = False
+        self.vgg = vgg.eval()
+        self.reduction = reduction
+        # self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+        #                                       std=[0.229, 0.224, 0.225])
+
+    def forward(self, input, target):
+        # input = self.normalize(input)
+        # target = self.normalize(target)
+        input_feat = self.vgg(input)
+        target_feat = self.vgg(target)
+        return F.mse_loss(input_feat, target_feat, reduction=self.reduction)
 
 class MaskedAutoencoderViT(nn.Module):
     """ Masked Autoencoder with VisionTransformer backbone
@@ -27,6 +48,10 @@ class MaskedAutoencoderViT(nn.Module):
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
                  mlp_ratio=4., norm_layer=nn.LayerNorm, norm_pix_loss=False):
         super().__init__()
+
+        # --------------------------------------------------------------------------
+        # VGG-19 perceptual loss
+        self.perceptual_loss_fn = VGGLoss(layer=8)  # relu2_2
 
         # --------------------------------------------------------------------------
         # MAE encoder specifics
@@ -217,11 +242,18 @@ class MaskedAutoencoderViT(nn.Module):
             var = target.var(dim=-1, keepdim=True)
             target = (target - mean) / (var + 1.e-6)**.5
 
+        # MSE loss
         loss = (pred - target) ** 2
         loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
 
-        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
-        return loss
+        mse_loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+
+        # VGG perceptual loss
+        pred_img = self.unpatchify(pred)
+        # pred_img = torch.clamp(pred_img, 0, 1)
+        perceptual_loss = self.perceptual_loss_fn(pred_img, imgs)
+
+        return 0.8 * mse_loss + 0.2 * perceptual_loss
 
     def forward(self, imgs, mask_ratio=0.75):
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
