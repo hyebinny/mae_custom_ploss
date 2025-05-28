@@ -92,6 +92,16 @@ class MaskedAutoencoderViT(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
+    def freeze_encoder(self):
+        for param in self.patch_embed.parameters():
+            param.requires_grad = False
+        for param in self.blocks.parameters():
+            param.requires_grad = False
+        for param in self.norm.parameters():
+            param.requires_grad = False
+        self.cls_token.requires_grad = False
+        self.pos_embed.requires_grad = False
+
     def patchify(self, imgs):
         """
         imgs: (N, 3, H, W)

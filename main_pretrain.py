@@ -155,6 +155,9 @@ def main(args):
     # define the model
     model = models_mae.__dict__[args.model](norm_pix_loss=args.norm_pix_loss)
 
+    # only fine-tune decoder
+    model.freeze_encoder()
+    
     model.to(device)
 
     model_without_ddp = model
@@ -176,7 +179,30 @@ def main(args):
         model_without_ddp = model.module
     
     # following timm: set wd as 0 for bias and norm layers
-    param_groups = optim_factory.add_weight_decay(model_without_ddp, args.weight_decay)
+    # train only the decoder params
+    decoder_named_params = []
+    decoder_named_params += list(model.decoder_embed.named_parameters())
+    decoder_named_params += list(model.decoder_blocks.named_parameters())
+    decoder_named_params += list(model.decoder_norm.named_parameters())
+    decoder_named_params += list(model.decoder_pred.named_parameters())
+    decoder_named_params += [('mask_token', model.mask_token)]
+
+    # Preventing duplicate parameters
+    decay_params = []
+    no_decay_params = []
+
+    for name, param in decoder_named_params:
+        if param.requires_grad:
+            if param.ndim == 1 or name.endswith(".bias"):
+                no_decay_params.append(param)
+            else:
+                decay_params.append(param)
+
+    param_groups = [
+        {"params": decay_params, "weight_decay": args.weight_decay},
+        {"params": no_decay_params, "weight_decay": 0.0},
+    ]
+
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
     print(optimizer)
     loss_scaler = NativeScaler()
