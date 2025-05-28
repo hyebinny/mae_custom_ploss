@@ -107,6 +107,9 @@ def get_args_parser():
 def main(args):
     misc.init_distributed_mode(args)
 
+    if args.log_dir is None:
+        args.log_dir = args.output_dir
+
     print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(', ', ',\n'))
 
