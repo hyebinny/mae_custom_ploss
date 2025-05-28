@@ -77,8 +77,8 @@ def get_args_parser():
 
     parser.add_argument('--output_dir', default='./output_dir',
                         help='path where to save, empty for no saving')
-    parser.add_argument('--log_dir', default='./output_dir',
-                        help='path where to tensorboard log')
+    parser.add_argument('--log_dir', default=None,
+                    help='path where to tensorboard log (default: same as output_dir if not set)')
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=0, type=int)
@@ -109,6 +109,9 @@ def main(args):
 
     print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(', ', ',\n'))
+
+    if args.log_dir is None:
+        args.log_dir = args.output_dir
 
     device = torch.device(args.device)
 
@@ -181,14 +184,19 @@ def main(args):
     
     # following timm: set wd as 0 for bias and norm layers
     # train only the decoder params
-    decoder_named_params = []
-    decoder_named_params += list(model.decoder_embed.named_parameters())
-    decoder_named_params += list(model.decoder_blocks.named_parameters())
-    decoder_named_params += list(model.decoder_norm.named_parameters())
-    decoder_named_params += list(model.decoder_pred.named_parameters())
-    decoder_named_params += [('mask_token', model.mask_token)]
+    if args.distributed:
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+        model_without_ddp = model.module
+    else:
+        model_without_ddp = model
 
-    # Preventing duplicate parameters
+    # 디코더 관련 파라미터만 수집
+    decoder_named_params = [
+        (name, param) for name, param in model_without_ddp.named_parameters()
+        if any(key in name for key in ['decoder', 'mask_token'])
+    ]
+
+    # 파라미터 그룹 설정
     decay_params = []
     no_decay_params = []
 
@@ -205,7 +213,12 @@ def main(args):
     ]
 
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
+
     print(optimizer)
+
+    total_params = sum(p.numel() for p in param_groups[0]['params'] + param_groups[1]['params'] if p.requires_grad)
+    print(f"Number of trainable parameters: {total_params}")
+
     loss_scaler = NativeScaler()
 
     misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
