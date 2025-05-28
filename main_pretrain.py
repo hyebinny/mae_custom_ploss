@@ -77,8 +77,8 @@ def get_args_parser():
 
     parser.add_argument('--output_dir', default='./output_dir',
                         help='path where to save, empty for no saving')
-    parser.add_argument('--log_dir', default='./output_dir',
-                        help='path where to tensorboard log')
+    parser.add_argument('--log_dir', default=None,
+                    help='path where to tensorboard log (default: same as output_dir if not set)')
     parser.add_argument('--device', default='cuda',
                         help='device to use for training / testing')
     parser.add_argument('--seed', default=0, type=int)
@@ -106,6 +106,9 @@ def get_args_parser():
 
 def main(args):
     misc.init_distributed_mode(args)
+
+    if args.log_dir is None:
+        args.log_dir = args.output_dir
 
     print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(', ', ',\n'))

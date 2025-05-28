@@ -7,6 +7,7 @@
 # References:
 # timm: https://github.com/rwightman/pytorch-image-models/tree/master/timm
 # DeiT: https://github.com/facebookresearch/deit
+# Perceptual loss: https://github.com/crowsonkb/vgg_loss.git
 # --------------------------------------------------------
 
 from functools import partial
@@ -253,7 +254,8 @@ class MaskedAutoencoderViT(nn.Module):
         # pred_img = torch.clamp(pred_img, 0, 1)
         perceptual_loss = self.perceptual_loss_fn(pred_img, imgs)
 
-        return 0.8 * mse_loss + 0.2 * perceptual_loss
+        # return 0.8 * mse_loss + 0.2 * perceptual_loss
+        return 0.5 * mse_loss + 0.5 * perceptual_loss
 
     def forward(self, imgs, mask_ratio=0.75):
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
